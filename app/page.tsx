@@ -2,10 +2,15 @@
 import { Todo } from '@prisma/client';
 import { useState, useEffect } from 'react';
 
+interface TodoWithImage extends Todo {
+  imageUrl?: string;
+  loadingImage?: boolean;
+}
+
 export default function Home() {
   const [newTodo, setNewTodo] = useState('');
   const [dueDate, setDueDate] = useState('');
-  const [todos, setTodos] = useState([]);
+  const [todos, setTodos] = useState<TodoWithImage[]>([]);
 
   useEffect(() => {
     fetchTodos();
@@ -15,9 +20,34 @@ export default function Home() {
     try {
       const res = await fetch('/api/todos');
       const data = await res.json();
-      setTodos(data);
+      const todosWithImage = data.map((todo: TodoWithImage) => ({
+        ...todo,
+        imageUrl: undefined,
+        loadingImage: true,
+      }));
+      setTodos(todosWithImage);
+
+      // fetch images for each todo
+      todosWithImage.forEach(fetchTodoImage);
     } catch (error) {
       console.error('Failed to fetch todos:', error);
+    }
+  };
+
+  const fetchTodoImage = async (todo: TodoWithImage) => {
+    try {
+      const res = await fetch(`/api/pexels?query=${encodeURIComponent(todo.title)}`);
+      const data = await res.json();
+      setTodos((prev) =>
+        prev.map((t) =>
+          t.id === todo.id ? { ...t, imageUrl: data.photoUrl, loadingImage: false } : t
+        )
+      );
+    } catch (error) {
+      console.error('Failed to fetch image:', error);
+      setTodos((prev) =>
+        prev.map((t) => (t.id === todo.id ? { ...t, loadingImage: false } : t))
+      );
     }
   };
 
@@ -44,7 +74,7 @@ export default function Home() {
   const handleDeleteTodo = async (id: any) => {
     try {
       await fetch(`/api/todos/${id}`, { method: 'DELETE' });
-      fetchTodos();
+      setTodos((prev) => prev.filter((t) => t.id !== id));
     } catch (error) {
       console.error('Failed to delete todo:', error);
     }
@@ -57,12 +87,14 @@ export default function Home() {
     return due < now;
   };
 
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-500 to-red-500 flex flex-col p-4">
       <div className="w-full max-w-md mx-auto">
-        <h1 className="text-4xl font-bold text-white mb-8">Things To Do App</h1>
+        <h1 className="text-4xl font-bold text-white mb-8 text-center">
+          Things To Do App
+        </h1>
 
+        {/* INPUTS */}
         <div className="flex mb-6">
           <input
             type="text"
@@ -87,39 +119,63 @@ export default function Home() {
           </button>
         </div>
 
+        {/* TODO LIST */}
         <ul>
-          {todos.map((todo: Todo) => (
-            <li
-              key={todo.id}
-              className="flex justify-between items-center bg-white bg-opacity-90 p-4 mb-4 rounded-lg shadow-lg"
-            >
-              <div>
-                <span className="text-gray-800">{todo.title}</span>
-                {todo.dueDate && (
-                  <span
-                    className={`text-sm ml-2 ${
-                      isPastDue(new Date(todo.dueDate)) ? 'text-red-600' : 'text-gray-500'
-                    }`}
-                  >
-                    Due: {new Date(todo.dueDate).toLocaleDateString()}
-                  </span>
-                )}
-              </div>
+          {todos.map((todo) => (
+          <li
+            key={todo.id}
+            className="grid grid-cols-[1fr_140px_120px_40px] items-center bg-white bg-opacity-90 p-4 mb-4 rounded-lg shadow-lg"
+          >
+            {/* TITLE */}
+            <span className="text-gray-800 font-medium">{todo.title}</span>
 
-              <button
-                onClick={() => handleDeleteTodo(todo.id)}
-                className="text-red-500 hover:text-red-700 transition duration-300"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </li>
+            {/* IMAGE */}
+            <div className="flex items-center justify-center w-36 h-36">
+              {todo.loadingImage ? (
+                <div className="w-36 h-36 bg-gray-100 flex items-center justify-center rounded">
+                  <span className="text-xs text-gray-500 text-center">Loading...</span>
+                </div>
+              ) : todo.imageUrl ? (
+                <img
+                  src={todo.imageUrl}
+                  alt={todo.title}
+                  className="w-36 h-36 object-cover rounded"
+                />
+              ) : (
+                <div className="w-36 h-36 bg-gray-100 flex items-center justify-center rounded">
+                  <span className="text-xs text-gray-500 text-center">No image</span>
+                </div>
+              )}
+            </div>
+
+            {/* DUE DATE */}
+            <div className="flex items-center justify-center">
+              {todo.dueDate && (
+                <span
+                  className={`text-sm ${
+                    isPastDue(new Date(todo.dueDate)) ? 'text-red-600' : 'text-gray-500'
+                  }`}
+                >
+                  Due: {new Date(todo.dueDate).toLocaleDateString()}
+                </span>
+              )}
+            </div>
+
+            {/* DELETE BUTTON */}
+            <button
+              onClick={() => handleDeleteTodo(todo.id)}
+              className="text-red-500 hover:text-red-700 transition duration-300"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </li>
           ))}
         </ul>
       </div>
