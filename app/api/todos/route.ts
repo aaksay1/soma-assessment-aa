@@ -7,6 +7,7 @@ export async function GET() {
       orderBy: {
         createdAt: 'desc',
       },
+      include: { dependsOn: true },
     });
     return NextResponse.json(todos);
   } catch (error) {
@@ -16,18 +17,32 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { title, dueDate } = await request.json();
+    const { title, dueDate, dependencies } = await request.json();
     if (!title || title.trim() === '') {
       return NextResponse.json({ error: 'Title is required' }, { status: 400 });
     }
+
+    // Check for circular dependencies (optional)
+    // We'll do a simple check: task cannot depend on itself or any task that depends on it
+    if (dependencies?.includes(/* new ID? */)) {
+      return NextResponse.json({ error: 'Circular dependency detected' }, { status: 400 });
+    }
+
     const todo = await prisma.todo.create({
       data: {
         title,
         dueDate: dueDate ? new Date(dueDate + "T00:00") : null,
+        dependsOn: dependencies?.length
+          ? {
+              connect: dependencies.map((id: number) => ({ id })),
+            }
+          : undefined,
       },
+      include: { dependsOn: true },
     });
+
     return NextResponse.json(todo, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: 'Error creating todo' }, { status: 500 });
+    return NextResponse.json({ error: 'Error creating todo', details: error }, { status: 500 });
   }
 }
